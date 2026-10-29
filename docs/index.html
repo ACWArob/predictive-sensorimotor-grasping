@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Predictive Sensorimotor Grasping</title>
+<meta name="description" content="A robot grasp controller that predicts what a grasp should feel like, checks it at contact, and fixes its prediction for that object in one grasp.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fbfaf7;--ink:#16181d;--ink2:#545350;--rule:#e2e0da;--tint:#f2f0ea;--accent:#2a78d6;--warm:#eb6834;--good:#1b9e6e;--card:#ffffff}
+@media (prefers-color-scheme:dark){:root{--bg:#141517;--ink:#ecebe6;--ink2:#a9a8a2;--rule:#2c2d30;--tint:#1d1e21;--accent:#5b9cf0;--warm:#f08455;--good:#3cc28f;--card:#1a1b1e}
+ img.fig{background:#fff;border-radius:6px}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.65 "Source Serif 4",Georgia,serif}
+main{max-width:860px;margin:0 auto;padding:56px 20px 80px}
+h1,h2,h3,.sans{font-family:"IBM Plex Sans",system-ui,sans-serif}
+h1{font-size:clamp(30px,5vw,44px);line-height:1.12;font-weight:600;margin:0 0 14px;letter-spacing:-.01em}
+.lede{font-size:clamp(18px,2.4vw,21px);color:var(--ink2);margin:0 0 22px}
+.meta{font:14px/1.5 "IBM Plex Sans",sans-serif;color:var(--ink2);margin-bottom:22px}
+.btns{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 40px}
+.btn{font:500 14px "IBM Plex Sans",sans-serif;text-decoration:none;color:var(--ink);border:1px solid var(--rule);background:var(--card);padding:9px 16px;border-radius:999px}
+.btn:hover{border-color:var(--ink2)}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+h2{font-size:23px;font-weight:600;margin:52px 0 10px;padding-top:10px;border-top:1px solid var(--rule)}
+h3{font-size:17px;font-weight:600;margin:26px 0 6px}
+p{margin:0 0 14px}
+a{color:var(--accent)}
+figure{margin:22px 0 26px}
+img.fig{width:100%;height:auto;display:block;border:1px solid var(--rule);border-radius:6px}
+figcaption{font:13.5px/1.5 "IBM Plex Sans",sans-serif;color:var(--ink2);margin-top:8px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:8px 0 10px}
+.stat{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:16px}
+.stat b{display:block;font:600 30px/1.1 "IBM Plex Sans",sans-serif}
+.stat span{font:13.5px/1.4 "IBM Plex Sans",sans-serif;color:var(--ink2)}
+.stat.hl b{color:var(--good)}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
+.card{background:var(--card);border:1px solid var(--rule);border-top:3px solid var(--c);border-radius:10px;padding:16px}
+.card h3{margin:0 0 4px;color:var(--c)}
+.card .brain{font:12.5px "IBM Plex Sans",sans-serif;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.card p{font-size:15.5px;margin:0}
+.tw{overflow-x:auto;margin:10px 0 6px;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;min-width:560px;font:14.5px/1.45 "IBM Plex Sans",sans-serif}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-weight:600;border-bottom:1.5px solid var(--ink)}
+td.n{font-variant-numeric:tabular-nums}
+tr.ours td{background:var(--tint)}
+pre{background:var(--tint);border:1px solid var(--rule);border-radius:8px;padding:14px 16px;overflow-x:auto;font:13.5px/1.55 "IBM Plex Mono",monospace;margin:10px 0 18px}
+code{font-family:"IBM Plex Mono",monospace;font-size:.88em}
+.note{background:var(--tint);border-left:3px solid var(--warm);padding:12px 16px;border-radius:0 8px 8px 0;font-size:15.5px;margin:16px 0}
+ol.refs{font:14px/1.5 "IBM Plex Sans",sans-serif;color:var(--ink2);padding-left:22px}
+ol.refs li{margin-bottom:6px}
+footer{font:13px "IBM Plex Sans",sans-serif;color:var(--ink2);margin-top:56px;border-top:1px solid var(--rule);padding-top:16px}
+@media (max-width:680px){body{font-size:16px}main{padding:36px 16px 60px}.stats,.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<p class="meta">Correll Lab · University of Colorado Boulder · work in progress</p>
+<h1>Predictive Sensorimotor Grasping</h1>
+<p class="lede">A robot that guesses how heavy something is before it touches it, checks that guess as it lifts, and fixes the guess for that object after one try, the way people do.</p>
+<p class="meta">Adam Abid</p>
+<div class="btns">
+  <a class="btn primary" href="assets/PSG_System_Architecture.pdf">Technical note (PDF)</a>
+  <a class="btn" href="https://github.com/ACWArob/predictive-sensorimotor-grasping">Code</a>
+  <a class="btn" href="#results">Results</a>
+  <a class="btn" href="#run">Run the simulation</a>
+</div>
+
+<div class="stats">
+  <div class="stat hl"><b>97%</b><span>lifted and held on objects whose looks lie about their weight</span></div>
+  <div class="stat"><b>39% / 51%</b><span>DeliGrasp-style prior / Exp-Force-style retrieval on the same objects</span></div>
+  <div class="stat"><b>1 grasp</b><span>to correct the prediction for a fooled object, without leaking to look-alikes</span></div>
+</div>
+<p class="meta">MuJoCo simulation, 3 seeds. Not yet run on hardware.</p>
+
+<h2>The idea</h2>
+<p>Most robot grippers pick a force before contact and then react if the object slips. Nothing they feel during one grasp changes the next. People work differently: before the fingers touch, the brain already expects a weight and a slipperiness. Contact, lift-off and slip are checkpoints where that expectation meets sensation. If a box is heavier than it looked, grip force rises within about 70&nbsp;ms and the expected weight is rewritten in a single lift (Flanagan, Bowman &amp; Johansson, 2006).</p>
+<p>The strangest part is the size-weight illusion. Lift a big and a small cube of the same weight twenty times and you will still <em>feel</em> the small one as heavier, yet your grip force is right after one or two lifts. The motor system keeps its own belief, separate from perception. PSG builds that split into a grasp controller.</p>
+
+<h2>Architecture</h2>
+<figure>
+  <img class="fig" src="assets/fig_architecture.png" alt="Diagram: perception and grasp planner feed a predictor, which sets the grip command for the DeliGrasp loop. A comparator checks contact events, updates a per-object residual, and triggers reflexes; a value head sets the safety margin.">
+  <figcaption>Grey is the existing MAGPIE stack, unchanged. Colour is new. Three learners, each trained on its own error signal.</figcaption>
+</figure>
+<div class="cards">
+  <div class="card" style="--c:var(--accent)"><div class="brain">like the cerebellum</div><h3>Predictor</h3><p>From the DINOv2 embedding and grasp geometry, predicts the load at lift-off and the grip-to-load ratio where the object slips, each with an honest uncertainty. Trained offline on logged grasps.</p></div>
+  <div class="card" style="--c:var(--warm)"><div class="brain">like the tactile reflex + fast memory</div><h3>Comparator + residual</h3><p>Checks felt load against the prediction at each checkpoint. Too heavy: raise grip now. After the grasp: one Kalman update to this object's correction. A big surprise resets its uncertainty so one grasp is enough.</p></div>
+  <div class="card" style="--c:var(--good)"><div class="brain">like the basal ganglia</div><h3>Value head</h3><p>Learns the safety margin from grasp success only. Prediction error is never the reward; it only decides whether the value head is trusted to act.</p></div>
+</div>
+
+<h3>One object, two grasps</h3>
+<figure>
+  <img class="fig" src="assets/fig_lift.png" alt="Two plots of load and grip over time. In grasp 1 the felt load runs past the predicted band and the grip command rises to match. In grasp 2 the prediction matches the felt load and grip is set correctly from the start.">
+  <figcaption>Grasp 1: the object is 3× heavier than predicted; grip is coupled to load as it climbs past the prediction, and the lift succeeds. Grasp 2: the corrected prediction matches. Real PSG code against a simulated wrist sensor.</figcaption>
+</figure>
+
+<h2 id="results">Results so far</h2>
+<p>A parallel-jaw gripper in MuJoCo lifts boxes 10&nbsp;cm and holds them. Training objects are honest; the test set adds 30 unseen objects and six that lie: a big hollow box and a small dense block, identical bottles one empty one full, hollow metal that dents, lead-filled plastic. Baselines get the same slip reflex, so only prediction and learning differ.</p>
+<div class="tw"><table>
+<thead><tr><th>Method</th><th>Deceptive: lifted &amp; held</th><th>Deceptive: grip appropriate</th><th>Unseen: force error</th></tr></thead>
+<tbody>
+<tr><td>DeliGrasp-like (semantic prior)</td><td class="n">39%</td><td class="n">0%</td><td class="n">1.93 N</td></tr>
+<tr><td>Exp-Force-like (retrieval)</td><td class="n">51%</td><td class="n">16%</td><td class="n">3.07 N</td></tr>
+<tr><td>Predictor only</td><td class="n">83%</td><td class="n">0%</td><td class="n">0.99 N</td></tr>
+<tr class="ours"><td><b>Predictor + one-shot update</b></td><td class="n"><b>97%</b></td><td class="n"><b>78%</b></td><td class="n">0.93 N</td></tr>
+<tr><td>Full (+ value head)</td><td class="n">97%</td><td class="n">73%</td><td class="n">0.70 N</td></tr>
+</tbody></table></div>
+<p class="meta">"Appropriate" = initial grip between 1× and 2.5× what the object needed, and below its crush limit.</p>
+<figure>
+  <img class="fig" src="assets/fig_deceptive.png" alt="Line charts over five grasps of the same object. PSG with one-shot update reaches 100% clean success from grasp 2 and its grip drops to about 1.3 times need; baselines stay flat or improve slowly.">
+  <figcaption>Deceptive objects, five interleaved grasps each. With the one-shot update, success reaches 100% from grasp 2.</figcaption>
+</figure>
+<figure>
+  <img class="fig" src="assets/fig_noleak.png" alt="Line chart over nine grasps: empty bottle, full bottle, empty bottle again. Retrieval over-grips the empty bottle at about 15 times need after seeing the full one; PSG stays near 1.3 times.">
+  <figcaption>Identical-looking bottles. After the full one, retrieval grips the empty one at ~15× need; PSG's per-object correction does not leak.</figcaption>
+</figure>
+<div class="note"><b>What this does not show yet.</b> The value head adds nothing measurable in simulation (97% either way); that claim needs hardware with fragile and slippery objects. The sim uses boxes and a stand-in for DINOv2, and nothing here has run on the UR5 yet.</div>
+
+<h2>On the robot</h2>
+<p>PSG plugs into the MAGPIE ROS 2 stack behind one flag in <code>deligrasp_node</code>. With it on, DeliGrasp starts at the predicted force, the retreat becomes a measured lift using the wrist force/torque sensor, and every grasp is logged as training data.</p>
+<figure>
+  <img class="fig" src="assets/fig_ros.png" alt="ROS diagram: camera and force sensor feed deligrasp_node, which commands ur5_node and gripper_node and writes logs.">
+  <figcaption>Data flow per grasp. The reflex reaches the gripper through <code>/gripper/set_force</code>.</figcaption>
+</figure>
+
+<h2 id="run">Run the simulation</h2>
+<pre>git clone https://github.com/ACWArob/predictive-sensorimotor-grasping
+cd predictive-sensorimotor-grasping
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install mujoco numpy matplotlib pytest
+python -m pytest tests -q              # 3 fast checks
+python -m sim.run_experiments --seeds 3   # ~2 min on an M4 Pro; writes results/</pre>
+<p>On macOS use <code>mjpython</code> instead of <code>python</code> to open the MuJoCo viewer.</p>
+
+<h2>Closest related work</h2>
+<div class="tw"><table>
+<thead><tr><th>Work</th><th>What it does</th><th>Difference</th></tr></thead>
+<tbody>
+<tr><td>Exp-Force (2026)</td><td>Picks pre-grasp force from retrieved past grasps + a VLM</td><td>Open-loop; no checkpoints or per-object correction</td></tr>
+<tr><td>Huang et al. (2025)</td><td>Reuses one grasp's sensing to set force when regrasping</td><td>No vision prior, uncertainty, or learned margin</td></tr>
+<tr><td>RL-Token, EXPO-FT (2026)</td><td>Small RL residual on a frozen VLA</td><td>Template for our value head; no sensory prediction</td></tr>
+<tr><td>LIFT (2026)</td><td>Injects force into a VLA to react after contact</td><td>Reacts; PSG predicts before contact</td></tr>
+<tr><td>PhysMem, MemoryVLA (2026)</td><td>Rule memory for a planner; token memory inside a VLA</td><td>Not grasp-force; no mid-grasp check</td></tr>
+</tbody></table></div>
+
+<h2>References</h2>
+<ol class="refs">
+<li>Flanagan, Bowman &amp; Johansson (2006). Control strategies in object manipulation tasks. <i>Curr. Opin. Neurobiol.</i></li>
+<li>Flanagan &amp; Beltzner (2000). Independence of perceptual and sensorimotor predictions in the size–weight illusion. <i>Nat. Neurosci.</i></li>
+<li>Doya (2000). Complementary roles of basal ganglia and cerebellum in learning and motor control. <i>Curr. Opin. Neurobiol.</i></li>
+<li>McClelland, McNaughton &amp; O'Reilly (1995). Why there are complementary learning systems. <i>Psychol. Rev.</i></li>
+<li>Yu &amp; Dayan (2005). Uncertainty, neuromodulation, and attention. <i>Neuron</i>.</li>
+<li><a href="https://arxiv.org/abs/2603.08668">Exp-Force, arXiv 2603.08668</a> · <a href="https://arxiv.org/abs/2503.11057">Huang et al., arXiv 2503.11057</a> · <a href="https://arxiv.org/abs/2604.23073">RL-Token, arXiv 2604.23073</a> · <a href="https://arxiv.org/abs/2605.25477">EXPO-FT, arXiv 2605.25477</a> · <a href="https://arxiv.org/abs/2607.14236">LIFT, arXiv 2607.14236</a> · <a href="https://arxiv.org/abs/2602.20323">PhysMem, arXiv 2602.20323</a> · <a href="https://arxiv.org/abs/2508.19236">MemoryVLA, arXiv 2508.19236</a></li>
+</ol>
+
+<footer>Predictive Sensorimotor Grasping · Correll Lab, CU Boulder · draft, October 2026</footer>
+</main>
+</body>
+</html>
