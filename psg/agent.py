@@ -69,6 +69,11 @@ class PredictiveGraspAgent:
                 crushed: bool, grip_max: float):
         if self.mode != "predictor" and crushed:
             self.store.set_ceiling(p.obj_id, 0.7 * grip_max)        # learned fragility
+        elif self.mode != "predictor" and not success:
+            # failure-aware: a drop means we under-gripped, so never let the residual stay where it was
+            e = self.store.entries[p.obj_id]
+            e.r[0] += np.log(1.5)
+            e.P[0] = max(e.P[0], np.log(1.5) ** 2)
         ctx, arm = self._pending
         if arm is not None:
             self.vh.update(ctx, arm, self.vh.reward(success and not crushed, pred.margin))

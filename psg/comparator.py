@@ -59,12 +59,14 @@ class Comparator:
             return None
 
         if event == "liftoff":
-            actual = max(info["load_N"], 1e-3)
+            # floor + clip: a near-zero reading (object barely lifted, sensor glitch) must not
+            # drive the residual to -inf and make every later grasp drop (found by harness S5)
+            actual = max(info["load_N"], 0.05)
             self._load_actual = actual
             z = (np.log(actual) - p.mean[LOAD]) / p.std[LOAD]
             action = "none"
             if c.update_on and self.store is not None and abs(z) > c.z_update:
-                innov = np.log(actual) - p.mean[LOAD]
+                innov = float(np.clip(np.log(actual) - p.mean[LOAD], -np.log(8.0), np.log(8.0)))
                 self.store.update(self.obj_id, LOAD, innov)
                 action = "update"
             self.log.append(ControlPoint("liftoff", info["t"], p.load, actual, float(z), action))
