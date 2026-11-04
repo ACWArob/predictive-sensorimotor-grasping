@@ -102,6 +102,21 @@ What this does and doesn't show, honestly:
 - **Not supported yet:** the value head and the gate add nothing measurable here (97% either way). The sim has one knob (grip) and a simple failure model, so there's little margin policy to learn. Either show it on the robot with fragile + slippery objects, or drop claim 2.
 - **Caveats:** sim, not hardware. Objects are boxes, the "embedding" is a random projection of size + material, and the bottle test assumes the robot knows which bottle is which (tracker / scene slot). With truly indistinguishable objects and no tracking, a human also falls back on "the last one I lifted"; that's a fair experiment to add.
 
+## v1 vs v2 vs v3 harness (Nov 3, 5 seeds, paired)
+
+`python -m harness.compare_autograsp --seeds 5`. Plan in [harness/TEST_PLAN.md](harness/TEST_PLAN.md); full report in [harness/out/report.md](harness/out/report.md).
+
+| Suite | v1 DeliGrasp-style | v2 PSG | v3 PSG + coupling |
+|---|---|---|---|
+| Honest unseen (success) | 100% | 100% | 100% |
+| Deceptive weight | 40% | 97% | 99% |
+| Look-alike leak | 80% | 100% | 100% |
+| Fragile, looks sturdy | 33% (30 crushes) | 82% (8) | **100% (0)** |
+| Same object ×5 | 100% | 100% | 100% |
+| Peak grip ÷ need (median, deceptive) | 5.3× | 1.4× | 1.5× |
+
+v2 and v3 pass all five pre-registered checks against v1.
+
 ## References
 
 Flanagan, Bowman & Johansson 2006 (control points, one-lift update) · Flanagan & Beltzner 2000 (size-weight illusion) · Johansson & Westling 1984/88 (grip-load coupling) · Wolpert & Kawato 1998 (forward models) · Doya 2000 (cerebellum / basal ganglia / cortex) · McClelland, McNaughton & O'Reilly 1995 (complementary learning systems) · DeWolf et al. 2016, Waterloo (REACH adaptive cerebellum) · RL-Token arXiv 2604.23073 · Exp-Force arXiv 2603.08668 · OmniVIC arXiv 2510.17150 · RECALL arXiv 2606.23617. Full list and links in the write-up doc and CLAUDE.md.

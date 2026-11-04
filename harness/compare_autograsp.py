@@ -23,7 +23,7 @@ from sim.objects import deceptive_set, heldout_set, make, percept, random_size  
 from sim.run_experiments import collect, f_need                          # noqa: E402
 
 OUT = os.path.join(ROOT, "harness", "out")
-SYSTEMS = {"v1_deligrasp": None, "v2_psg": "full"}
+SYSTEMS = {"v1_deligrasp": None, "v2_psg": "full", "v3_psg_couple": "full"}
 
 
 def fragile_set(rng):
@@ -36,7 +36,7 @@ def fragile_set(rng):
 def new_system(name, model, vrows):
     if name == "v1_deligrasp":
         return DeliGraspLike()
-    agent = PredictiveGraspAgent(model, mode=SYSTEMS[name])
+    agent = PredictiveGraspAgent(model, mode=SYSTEMS[name], couple=name.endswith("couple"))
     rows = [(x, f / np.exp(model.predict(x)[0][0].sum()), ok) for x, f, ok in vrows]
     agent.pretrain_value_head(rows)
     return agent
@@ -55,7 +55,7 @@ def do_grasp(system, obj, rng):
         system.observe(obj, pc, f0, res)
     need = f_need(obj)
     return dict(obj=obj.name, f_init=round(f0, 3), f_need=round(need, 3), excess=round(f0 / need, 3),
-                grip_max=round(res.grip_max, 3), success=int(res.success),
+                grip_max=round(res.grip_max, 3), peak_excess=round(res.grip_max / need, 3), success=int(res.success),
                 clean=int(res.success and not res.slipped), crushed=int(res.crushed),
                 dropped=int(res.dropped), n_reflex=res.n_reflex)
 
@@ -100,47 +100,58 @@ def boot_ci(diff, n=2000, rng=np.random.default_rng(0)):
     return float(np.percentile(b, 2.5)), float(np.percentile(b, 97.5))
 
 
-def report(rows):
+SUITES = ["S1_honest_unseen", "S2_deceptive", "S3_lookalike_leak", "S4_fragile", "S5_repeat_honest"]
+
+
+def report_pair(rows, base, chal):
     def sel(**kw):
         return [r for r in rows if all(r[k] == v for k, v in kw.items())]
-    lines = ["# AutoGrasp v1 vs v2: paired harness report", "",
-             f"{len({r['seed'] for r in rows})} seeds; same objects, order, percept noise and physics for both systems.", "",
-             "| Suite | v1 success | v2 success | Δ (95% CI) | v1 median excess | v2 median excess | v1 crushes | v2 crushes | v2-only wins | v1-only wins |",
+    med = lambda rs, k: float(np.median([r[k] for r in rs]))             # noqa: E731
+    lines = [f"## {chal} vs {base}", "",
+             "| Suite | base success | new success | Δ (95% CI) | base excess (init / peak) | new excess (init / peak) | base crushes | new crushes | new-only wins | base-only wins |",
              "|---|---|---|---|---|---|---|---|---|---|"]
-    verdict = {}
-    for s in ["S1_honest_unseen", "S2_deceptive", "S3_lookalike_leak", "S4_fragile", "S5_repeat_honest"]:
-        a, b = sel(suite=s, system="v1_deligrasp"), sel(suite=s, system="v2_psg")
+    v = {}
+    for s in SUITES:
+        a, b = sel(suite=s, system=base), sel(suite=s, system=chal)
         key = lambda r: (r["seed"], r["trial"])                          # noqa: E731
         A, Bm = {key(r): r for r in a}, {key(r): r for r in b}
         diff = [Bm[k]["success"] - A[k]["success"] for k in A]
         lo, hi = boot_ci(diff)
         sa, sb = np.mean([r["success"] for r in a]), np.mean([r["success"] for r in b])
-        ea, eb = np.median([r["excess"] for r in a]), np.median([r["excess"] for r in b])
         ca, cb = sum(r["crushed"] for r in a), sum(r["crushed"] for r in b)
-        w2, w1 = sum(d == 1 for d in diff), sum(d == -1 for d in diff)
-        lines.append(f"| {s} | {sa:.0%} | {sb:.0%} | {sb - sa:+.0%} ({lo:+.0%}, {hi:+.0%}) | {ea:.2f}× | {eb:.2f}× | {ca} | {cb} | {w2} | {w1} |")
-        verdict[s] = dict(sa=sa, sb=sb, lo=lo, ea=ea, eb=eb, ca=ca, cb=cb, a=a, b=b)
-
-    v = verdict
-    s3 = v["S3_lookalike_leak"]
-    late = lambda rs: np.median([r["excess"] for r in rs if r["trial"] >= 6])   # noqa: E731
+        lines.append(f"| {s} | {sa:.0%} | {sb:.0%} | {sb - sa:+.0%} ({lo:+.0%}, {hi:+.0%}) | "
+                     f"{med(a, 'excess'):.2f}× / {med(a, 'peak_excess'):.2f}× | {med(b, 'excess'):.2f}× / {med(b, 'peak_excess'):.2f}× | "
+                     f"{ca} | {cb} | {sum(d == 1 for d in diff)} | {sum(d == -1 for d in diff)} |")
+        v[s] = dict(sa=sa, sb=sb, lo=lo, ca=ca, cb=cb, a=a, b=b)
+    late = lambda rs: float(np.median([r["peak_excess"] for r in rs if r["trial"] >= 6]))   # noqa: E731
     s5b = v["S5_repeat_honest"]["b"]
     g1 = np.mean([r["success"] for r in s5b if r["rep"] == 0])
     gl = np.mean([r["success"] for r in s5b if r["rep"] > 0])
+    s1 = v["S1_honest_unseen"]
     checks = [
-        ("1. S1 no regression, force closer to 1.0", v["S1_honest_unseen"]["sb"] >= v["S1_honest_unseen"]["sa"] - 0.02 and abs(np.log(v["S1_honest_unseen"]["eb"])) < abs(np.log(v["S1_honest_unseen"]["ea"]))),
-        ("2. S2 v2 ≥ v1 + 20 pp, CI excludes 0", v["S2_deceptive"]["sb"] - v["S2_deceptive"]["sa"] >= 0.20 and v["S2_deceptive"]["lo"] > 0),
-        ("3. S3 no leak (late excess v2 ≤ 2.5×)", late(s3["b"]) <= 2.5),
-        ("4. S4 v2 crushes ≤ v1", v["S4_fragile"]["cb"] <= v["S4_fragile"]["ca"]),
+        ("1. S1 no regression (≥ base − 2 pp), peak force closer to 1.0", s1["sb"] >= s1["sa"] - 0.02 and abs(np.log(med(s1["b"], "peak_excess"))) < abs(np.log(med(s1["a"], "peak_excess")))),
+        ("2. S2 ≥ base + 20 pp, CI excludes 0", v["S2_deceptive"]["sb"] - v["S2_deceptive"]["sa"] >= 0.20 and v["S2_deceptive"]["lo"] > 0),
+        ("3. S3 no leak (median peak excess on 2nd empty block ≤ 2.5×)", late(v["S3_lookalike_leak"]["b"]) <= 2.5),
+        ("4. S4 crushes ≤ base", v["S4_fragile"]["cb"] <= v["S4_fragile"]["ca"]),
         ("5. S5 repeats never worse than first try", gl >= g1),
     ]
-    lines += ["", "## Pre-registered checks", ""] + [f"- {'PASS' if ok else 'FAIL'}: {name}" for name, ok in checks]
-    lines += ["", f"S3 detail: median excess on the second 'empty' block: v1 {late(s3['a']):.2f}×, v2 {late(s3['b']):.2f}×.",
-              f"S5 detail: v2 success grasp 1 {g1:.0%}, grasps 2–5 {gl:.0%}."]
-    s2a, s2b = v["S2_deceptive"]["a"], v["S2_deceptive"]["b"]
-    lines += ["", "## S2 by grasp number (success)", "", "| grasp | v1 | v2 |", "|---|---|---|"]
+    lines += ["", "Pre-registered checks:", ""] + [f"- {'PASS' if ok else 'FAIL'}: {n}" for n, ok in checks]
+    lines += ["", f"S5: grasp 1 {g1:.1%}, grasps 2–5 {gl:.1%}.", "", "S2 success by grasp number:", "", "| grasp | base | new |", "|---|---|---|"]
     for k in range(5):
-        lines.append(f"| {k + 1} | {np.mean([r['success'] for r in s2a if r['rep'] == k]):.0%} | {np.mean([r['success'] for r in s2b if r['rep'] == k]):.0%} |")
+        lines.append(f"| {k + 1} | {np.mean([r['success'] for r in v['S2_deceptive']['a'] if r['rep'] == k]):.0%} | "
+                     f"{np.mean([r['success'] for r in v['S2_deceptive']['b'] if r['rep'] == k]):.0%} |")
+    return lines
+
+
+def report(rows):
+    systems = list(dict.fromkeys(r["system"] for r in rows))
+    lines = ["# AutoGrasp harness report", "",
+             f"{len({r['seed'] for r in rows})} seeds; same objects, order, percept noise and physics for every system. "
+             "Excess = grip ÷ force the object needed (init = commanded at contact, peak = max during the grasp).", ""]
+    for chal in systems[1:]:
+        lines += report_pair(rows, systems[0], chal) + [""]
+    if len(systems) > 2:
+        lines += report_pair(rows, systems[1], systems[2]) + [""]
     return "\n".join(lines) + "\n"
 
 

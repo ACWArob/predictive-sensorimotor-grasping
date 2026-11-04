@@ -14,6 +14,10 @@ Both versions run the **same objects, in the same order, with the same seeds and
 | Learned parts | none | predictor (offline, logged grasps); value head (margin, gated) |
 | Data it gets | same Phase-0 log (48 honest objects, ~240 grasps) | same |
 
+**v3 = PSG + grip-load coupling from contact**: close at 0.35× the planned grip, then raise grip with the felt load (grip = load × predicted ratio × 1.4), stepping up whenever the fingers are near their friction limit. This is the Johansson & Westling loading phase. It was added after v2 still crushed objects that look heavy but are fragile.
+
+All PSG versions have a 0.3 N grip floor (the MAGPIE gripper's ~0.15 N/finger sensing floor). It was added after the harness showed that below it the simulated fingers never reach very light foam objects. v1 never commands that little, so it is unaffected.
+
 ## Test suites
 
 | Suite | Objects | Grasps | What it probes | v2 should |

@@ -25,6 +25,14 @@ class ComparatorConfig:
     slip_boost: float = 1.4      # grip *= this on a slip event
     reflex_on: bool = True
     update_on: bool = True
+    # Anticipatory grip-load coupling from contact (Johansson & Westling 1984): close gently, then let
+    # grip rise in parallel with the felt load (grip = load x predicted ratio x margin) instead of
+    # committing the full predicted grip at contact. Looks-heavy-but-fragile objects are no longer
+    # crushed, and heavier-than-predicted objects are caught by the same rule.
+    couple_from_contact: bool = False
+    couple_margin: float = 1.4
+    saturation: float = 0.8          # load*ratio >= this x grip -> near the friction limit
+    saturation_step: float = 1.05    # per control tick (1 kHz sim, ~50 Hz robot: tune there)
 
 
 class Comparator:
@@ -43,6 +51,20 @@ class Comparator:
         p, c = self.pred, self.cfg
         if event == "contact":
             self.log.append(ControlPoint("contact", info["t"], None, None, None, "none"))
+            return None
+
+        if event == "load" and c.couple_from_contact:
+            target = info["load_N"] * p.ratio * c.couple_margin
+            # friction-limited: the fingers carry nearly all the load this grip can hold, so the object is
+            # dragging, not lifting. Load can't rise past grip/ratio, so lead it: step grip up.
+            if info["load_N"] * p.ratio >= c.saturation * info["grip_N"]:
+                target = max(target, info["grip_N"] * c.saturation_step)
+            target = self._cap(target)
+            if target > info["grip_N"]:
+                if not self._coupled:
+                    self._coupled = True
+                    self.log.append(ControlPoint("load", -1, p.load, info["load_N"], None, "couple"))
+                return target
             return None
 
         if event == "load":

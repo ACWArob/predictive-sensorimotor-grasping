@@ -27,12 +27,17 @@ MODES = ("predictor", "predictor+update", "full", "full-nogate")
 class PredictiveGraspAgent:
     def __init__(self, model: ForwardModel, mode="full", gate_std=0.35, base_margin=1.25,
                  std_margin_gain=1.0, f_max=80.0, cmp_cfg: ComparatorConfig | None = None,
-                 value_head: ValueHead | None = None):
+                 value_head: ValueHead | None = None, couple: bool = False, contact_frac: float = 0.35,
+                 min_grip: float = 0.3):
         assert mode in MODES, mode
         self.model, self.mode = model, mode
         self.gate_std, self.base_margin, self.k_std, self.f_max = gate_std, base_margin, std_margin_gain, f_max
         self.store = ObjectResidualStore()
-        self.cmp_cfg = cmp_cfg or ComparatorConfig(update_on=mode != "predictor")
+        self.cmp_cfg = cmp_cfg or ComparatorConfig(update_on=mode != "predictor", couple_from_contact=couple)
+        self.couple, self.contact_frac = couple, contact_frac
+        # hardware floor: the MAGPIE gripper can't sense or hold below ~0.15 N per finger (gripper.py),
+        # and below it the fingers may not even close onto a light object
+        self.min_grip = min_grip
         self.vh = value_head or ValueHead()
         self.logs: list[GraspLog] = []
         self._pending = None
@@ -59,6 +64,9 @@ class PredictiveGraspAgent:
         grip = min(need * margin, self.f_max)
         if use_res and e.f_ceiling is not None:
             grip = min(grip, e.f_ceiling)
+        if self.couple:
+            grip = self.contact_frac * grip      # gentle closing; grip then rises with the felt load
+        grip = max(grip, self.min_grip)
         pred = Prediction(mean, std, float(margin), grip, e.f_ceiling if use_res else None, familiar)
         cmp = Comparator(p.obj_id, pred, mu, self.store if use_res else None, self.cmp_cfg)
         self._pending = (ctx, arm)

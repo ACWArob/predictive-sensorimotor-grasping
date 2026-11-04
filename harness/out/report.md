@@ -1,32 +1,94 @@
-# AutoGrasp v1 vs v2: paired harness report
+# AutoGrasp harness report
 
-5 seeds; same objects, order, percept noise and physics for both systems.
+5 seeds; same objects, order, percept noise and physics for every system. Excess = grip ÷ force the object needed (init = commanded at contact, peak = max during the grasp).
 
-| Suite | v1 success | v2 success | Δ (95% CI) | v1 median excess | v2 median excess | v1 crushes | v2 crushes | v2-only wins | v1-only wins |
+## v2_psg vs v1_deligrasp
+
+| Suite | base success | new success | Δ (95% CI) | base excess (init / peak) | new excess (init / peak) | base crushes | new crushes | new-only wins | base-only wins |
 |---|---|---|---|---|---|---|---|---|---|
-| S1_honest_unseen | 100% | 99% | -1% (-2%, +0%) | 1.84× | 1.29× | 0 | 0 | 0 | 1 |
-| S2_deceptive | 40% | 97% | +57% (+49%, +65%) | 5.34× | 1.24× | 25 | 5 | 85 | 0 |
-| S3_lookalike_leak | 80% | 100% | +20% (+9%, +31%) | 10.01× | 1.19× | 0 | 0 | 9 | 0 |
-| S4_fragile | 33% | 82% | +49% (+36%, +64%) | 9.13× | 1.59× | 30 | 8 | 22 | 0 |
-| S5_repeat_honest | 100% | 100% | -0% (-1%, +0%) | 1.84× | 1.26× | 0 | 0 | 0 | 1 |
+| S1_honest_unseen | 100% | 100% | +0% (+0%, +0%) | 1.84× / 1.84× | 1.39× / 1.57× | 0 | 0 | 0 | 0 |
+| S2_deceptive | 40% | 97% | +57% (+49%, +65%) | 5.34× / 5.34× | 1.25× / 1.42× | 25 | 5 | 85 | 0 |
+| S3_lookalike_leak | 80% | 100% | +20% (+9%, +31%) | 10.01× / 10.01× | 1.21× / 1.49× | 0 | 0 | 9 | 0 |
+| S4_fragile | 33% | 82% | +49% (+36%, +64%) | 9.13× / 9.13× | 1.59× / 1.61× | 30 | 8 | 22 | 0 |
+| S5_repeat_honest | 100% | 100% | +0% (+0%, +0%) | 1.84× / 1.84× | 1.34× / 1.42× | 0 | 0 | 0 | 0 |
 
-## Pre-registered checks
+Pre-registered checks:
 
-- PASS: 1. S1 no regression, force closer to 1.0
-- PASS: 2. S2 v2 ≥ v1 + 20 pp, CI excludes 0
-- PASS: 3. S3 no leak (late excess v2 ≤ 2.5×)
-- PASS: 4. S4 v2 crushes ≤ v1
-- FAIL: 5. S5 repeats never worse than first try
+- PASS: 1. S1 no regression (≥ base − 2 pp), peak force closer to 1.0
+- PASS: 2. S2 ≥ base + 20 pp, CI excludes 0
+- PASS: 3. S3 no leak (median peak excess on 2nd empty block ≤ 2.5×)
+- PASS: 4. S4 crushes ≤ base
+- PASS: 5. S5 repeats never worse than first try
 
-S3 detail: median excess on the second 'empty' block: v1 10.20×, v2 1.07×.
-S5 detail: v2 success grasp 1 100%, grasps 2–5 100%.
+S5: grasp 1 100.0%, grasps 2–5 100.0%.
 
-## S2 by grasp number (success)
+S2 success by grasp number:
 
-| grasp | v1 | v2 |
+| grasp | base | new |
 |---|---|---|
 | 1 | 40% | 83% |
 | 2 | 40% | 100% |
 | 3 | 40% | 100% |
 | 4 | 40% | 100% |
 | 5 | 40% | 100% |
+
+## v3_psg_couple vs v1_deligrasp
+
+| Suite | base success | new success | Δ (95% CI) | base excess (init / peak) | new excess (init / peak) | base crushes | new crushes | new-only wins | base-only wins |
+|---|---|---|---|---|---|---|---|---|---|
+| S1_honest_unseen | 100% | 100% | +0% (+0%, +0%) | 1.84× / 1.84× | 0.49× / 1.55× | 0 | 0 | 0 | 0 |
+| S2_deceptive | 40% | 99% | +59% (+51%, +66%) | 5.34× / 5.34× | 0.49× / 1.46× | 25 | 2 | 88 | 0 |
+| S3_lookalike_leak | 80% | 100% | +20% (+9%, +31%) | 10.01× / 10.01× | 1.09× / 1.42× | 0 | 0 | 9 | 0 |
+| S4_fragile | 33% | 100% | +67% (+51%, +80%) | 9.13× / 9.13× | 0.98× / 1.59× | 30 | 0 | 30 | 0 |
+| S5_repeat_honest | 100% | 100% | +0% (+0%, +0%) | 1.84× / 1.84× | 0.47× / 1.52× | 0 | 0 | 0 | 0 |
+
+Pre-registered checks:
+
+- PASS: 1. S1 no regression (≥ base − 2 pp), peak force closer to 1.0
+- PASS: 2. S2 ≥ base + 20 pp, CI excludes 0
+- PASS: 3. S3 no leak (median peak excess on 2nd empty block ≤ 2.5×)
+- PASS: 4. S4 crushes ≤ base
+- PASS: 5. S5 repeats never worse than first try
+
+S5: grasp 1 100.0%, grasps 2–5 100.0%.
+
+S2 success by grasp number:
+
+| grasp | base | new |
+|---|---|---|
+| 1 | 40% | 93% |
+| 2 | 40% | 100% |
+| 3 | 40% | 100% |
+| 4 | 40% | 100% |
+| 5 | 40% | 100% |
+
+## v3_psg_couple vs v2_psg
+
+| Suite | base success | new success | Δ (95% CI) | base excess (init / peak) | new excess (init / peak) | base crushes | new crushes | new-only wins | base-only wins |
+|---|---|---|---|---|---|---|---|---|---|
+| S1_honest_unseen | 100% | 100% | +0% (+0%, +0%) | 1.39× / 1.57× | 0.49× / 1.55× | 0 | 0 | 0 | 0 |
+| S2_deceptive | 97% | 99% | +2% (+0%, +5%) | 1.25× / 1.42× | 0.49× / 1.46× | 5 | 2 | 3 | 0 |
+| S3_lookalike_leak | 100% | 100% | +0% (+0%, +0%) | 1.21× / 1.49× | 1.09× / 1.42× | 0 | 0 | 0 | 0 |
+| S4_fragile | 82% | 100% | +18% (+7%, +29%) | 1.59× / 1.61× | 0.98× / 1.59× | 8 | 0 | 8 | 0 |
+| S5_repeat_honest | 100% | 100% | +0% (+0%, +0%) | 1.34× / 1.42× | 0.47× / 1.52× | 0 | 0 | 0 | 0 |
+
+Pre-registered checks:
+
+- PASS: 1. S1 no regression (≥ base − 2 pp), peak force closer to 1.0
+- FAIL: 2. S2 ≥ base + 20 pp, CI excludes 0
+- PASS: 3. S3 no leak (median peak excess on 2nd empty block ≤ 2.5×)
+- PASS: 4. S4 crushes ≤ base
+- PASS: 5. S5 repeats never worse than first try
+
+S5: grasp 1 100.0%, grasps 2–5 100.0%.
+
+S2 success by grasp number:
+
+| grasp | base | new |
+|---|---|---|
+| 1 | 83% | 93% |
+| 2 | 100% | 100% |
+| 3 | 100% | 100% |
+| 4 | 100% | 100% |
+| 5 | 100% | 100% |
+
