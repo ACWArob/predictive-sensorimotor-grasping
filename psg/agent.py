@@ -84,7 +84,10 @@ class PredictiveGraspAgent:
             e.P[0] = max(e.P[0], np.log(1.5) ** 2)
         ctx, arm = self._pending
         if arm is not None:
-            self.vh.update(ctx, arm, self.vh.reward(success and not crushed, pred.margin))
+            excess = None
+            if cmp._load_actual:                              # measured need = felt load x predicted ratio
+                excess = grip_max / max(cmp._load_actual * pred.ratio, 1e-3)
+            self.vh.update(ctx, arm, self.vh.reward(success and not crushed, pred.margin, excess))
         self.logs.append(GraspLog(p.obj_id, self.mode, pred, cmp.log, success, crushed, grip_max))
 
     def pretrain_value_head(self, rows):

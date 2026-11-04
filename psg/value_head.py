@@ -17,8 +17,11 @@ MARGINS = np.array([1.05, 1.2, 1.4, 1.7, 2.1])
 
 
 class ValueHead:
-    def __init__(self, alpha=0.5, lam=1.0, force_cost=0.05):
+    def __init__(self, alpha=0.5, lam=1.0, force_cost=0.05, excess_cost=0.0):
         self.alpha, self.lam, self.force_cost = alpha, lam, force_cost
+        # excess_cost > 0: reward = success - excess_cost * (peak grip / measured need - 1).
+        # Success alone is ~97% here, so it barely varies and the bandit learns nothing; wasted force does vary.
+        self.excess_cost = excess_cost
         d = 4
         self.A = np.stack([lam * np.eye(d) for _ in MARGINS])
         self.b = np.zeros((len(MARGINS), d))
@@ -37,7 +40,9 @@ class ValueHead:
         a = int(np.argmax(scores))
         return a, float(MARGINS[a])
 
-    def reward(self, success: bool, margin: float):
+    def reward(self, success: bool, margin: float, excess: float | None = None):
+        if self.excess_cost > 0 and excess is not None:
+            return float(success) - self.excess_cost * max(0.0, excess - 1.0)
         return float(success) - self.force_cost * (margin - 1.0)
 
     def update(self, ctx, a: int, r: float):

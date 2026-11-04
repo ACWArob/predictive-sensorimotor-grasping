@@ -117,6 +117,8 @@ What this does and doesn't show, honestly:
 
 v2 and v3 pass all five pre-registered checks against v1.
 
+**Value-head ablation** (`harness/out_value_head/`): removing the value head (v2a) changes nothing; rewarding low excess force instead of success alone (v2b) makes the force *worse* (median peak on deceptive objects 1.60× vs 1.41×). Learning the margin by trial and error isn't paying off here. The uncertainty-scaled margin plus coupling (v3) does the job, so the next version drops the value head.
+
 ## References
 
 Flanagan, Bowman & Johansson 2006 (control points, one-lift update) · Flanagan & Beltzner 2000 (size-weight illusion) · Johansson & Westling 1984/88 (grip-load coupling) · Wolpert & Kawato 1998 (forward models) · Doya 2000 (cerebellum / basal ganglia / cortex) · McClelland, McNaughton & O'Reilly 1995 (complementary learning systems) · DeWolf et al. 2016, Waterloo (REACH adaptive cerebellum) · RL-Token arXiv 2604.23073 · Exp-Force arXiv 2603.08668 · OmniVIC arXiv 2510.17150 · RECALL arXiv 2606.23617. Full list and links in the write-up doc and CLAUDE.md.

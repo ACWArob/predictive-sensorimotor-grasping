@@ -23,7 +23,11 @@ from sim.objects import deceptive_set, heldout_set, make, percept, random_size  
 from sim.run_experiments import collect, f_need                          # noqa: E402
 
 OUT = os.path.join(ROOT, "harness", "out")
-SYSTEMS = {"v1_deligrasp": None, "v2_psg": "full", "v3_psg_couple": "full"}
+SYSTEMS = {"v1_deligrasp": None, "v2_psg": "full", "v3_psg_couple": "full",
+           "v2a_no_value_head": "predictor+update", "v2b_excess_reward": "full"}
+import os as _os
+if _os.environ.get("HARNESS_SYSTEMS"):
+    SYSTEMS = {k: SYSTEMS[k] for k in _os.environ["HARNESS_SYSTEMS"].split(",")}
 
 
 def fragile_set(rng):
@@ -36,7 +40,9 @@ def fragile_set(rng):
 def new_system(name, model, vrows):
     if name == "v1_deligrasp":
         return DeliGraspLike()
-    agent = PredictiveGraspAgent(model, mode=SYSTEMS[name], couple=name.endswith("couple"))
+    from psg.value_head import ValueHead
+    vh = ValueHead(excess_cost=0.3) if name == "v2b_excess_reward" else None
+    agent = PredictiveGraspAgent(model, mode=SYSTEMS[name], couple=name.endswith("couple"), value_head=vh)
     rows = [(x, f / np.exp(model.predict(x)[0][0].sum()), ok) for x, f, ok in vrows]
     agent.pretrain_value_head(rows)
     return agent
