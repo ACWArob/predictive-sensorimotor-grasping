@@ -73,7 +73,7 @@ footer{font:13px "IBM Plex Sans",sans-serif;color:var(--ink2);margin-top:56px;bo
   <div class="stat"><b>39% / 51%</b><span>DeliGrasp-style prior / Exp-Force-style retrieval on the same objects</span></div>
   <div class="stat"><b>1 grasp</b><span>to correct the prediction for a fooled object, without leaking to look-alikes</span></div>
 </div>
-<p class="meta">MuJoCo simulation, 3 seeds. Not yet run on hardware.</p>
+<p class="meta">MuJoCo simulation (simple jaw and the MAGPIE gripper model), 3–5 seeds. Not yet run on hardware.</p>
 
 <h2>The idea</h2>
 <p>Most robot grippers pick a force before contact and then react if the object slips. Nothing they feel during one grasp changes the next. People work differently: before the fingers touch, the brain already expects a weight and a slipperiness. Contact, lift-off and slip are checkpoints where that expectation meets sensation. If a box is heavier than it looked, grip force rises within about 70&nbsp;ms and the expected weight is rewritten in a single lift (Flanagan, Bowman &amp; Johansson, 2006).</p>
@@ -117,6 +117,29 @@ footer{font:13px "IBM Plex Sans",sans-serif;color:var(--ink2);margin-top:56px;bo
   <figcaption>Identical-looking bottles. After the full one, retrieval grips the empty one at ~15× need; PSG's per-object correction does not leak.</figcaption>
 </figure>
 <div class="note"><b>What this does not show yet.</b> The value head adds nothing measurable in simulation (97% either way); that claim needs hardware with fragile and slippery objects. The sim uses boxes and a stand-in for DINOv2, and nothing here has run on the UR5 yet.</div>
+
+<h2 id="versions">v1 vs v2 vs v3</h2>
+<p>v1 is the current AutoGrasp: guess mass and friction from what the object looks like, set one grip, react to slip. v2 is PSG. v3 adds grip-load coupling: close gently, then let grip rise with the load the wrist actually feels.</p>
+<figure>
+  <img class="fig" src="assets/fig_versions.png" alt="Three rows of five boxes, one row per version, showing what each does before the grasp, at closing, at lift-off, while carrying and after the grasp. A strip below describes the paired test harness.">
+  <figcaption>What changes at each step of one grasp, and how all three are tested on identical trials.</figcaption>
+</figure>
+<figure>
+  <video class="fig" src="assets/psg_v1_v2_v3_magpie.mp4" controls muted playsinline preload="metadata"></video>
+  <figcaption>MuJoCo with the MAGPIE gripper model. Real harness trials (seed 0) replayed side by side at half speed: v1 drops a dense block and crushes hollow metal and a thin cup; v3 holds all of them.</figcaption>
+</figure>
+<p>Five seeds, paired (same objects, order, sensor noise and physics for every version). Success rate, crushes in brackets:</p>
+<div class="tw"><table>
+<thead><tr><th>Suite</th><th>v1</th><th>v2 PSG</th><th>v3 PSG + coupling</th><th>v1</th><th>v2</th><th>v3</th></tr>
+<tr><th></th><th colspan="3">simple jaw</th><th colspan="3">MAGPIE model</th></tr></thead>
+<tbody>
+<tr><td>Honest, unseen</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td><td class="n">99%</td><td class="n">100%</td><td class="n">100%</td></tr>
+<tr><td>Deceptive weight</td><td class="n">40%</td><td class="n">97%</td><td class="n">99%</td><td class="n">50%</td><td class="n">97%</td><td class="n">99%</td></tr>
+<tr><td>Look-alike bottles</td><td class="n">80%</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td></tr>
+<tr class="ours"><td>Fragile, looks sturdy</td><td class="n">33% (30)</td><td class="n">82% (8)</td><td class="n"><b>100% (0)</b></td><td class="n">33% (30)</td><td class="n">84% (7)</td><td class="n"><b>100% (0)</b></td></tr>
+<tr><td>Same object ×5</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td></tr>
+</tbody></table></div>
+<p class="meta">v2 and v3 pass all five pre-registered checks against v1 on both grippers. Every grasp is in <a href="https://github.com/ACWArob/predictive-sensorimotor-grasping/blob/main/harness/out/PSG_harness_results.xlsx">the spreadsheet</a>. A value-head ablation found it adds nothing, so the next version drops it.</p>
 
 <h2>On the robot</h2>
 <p>PSG plugs into the MAGPIE ROS 2 stack behind one flag in <code>deligrasp_node</code>. With it on, DeliGrasp starts at the predicted force, the retreat becomes a measured lift using the wrist force/torque sensor, and every grasp is logged as training data.</p>

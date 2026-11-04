@@ -130,9 +130,10 @@ def _finger_forces(model, data, obj_id, finger_ids, table_id):
 
 
 def run_grasp(obj: PhysObject, grip_cmd: float, callback=None,
-              close_s=0.3, lift_s=1.0, hold_s=1.0, probe_slip=False) -> GraspResult:
+              close_s=0.3, lift_s=1.0, hold_s=1.0, probe_slip=False, on_step=None) -> GraspResult:
     """probe_slip: after a successful hold, ramp grip down until it slips to measure the
-    grip/load ratio (the friction label). Used only by the Phase-0 data collector."""
+    grip/load ratio (the friction label). Used only by the Phase-0 data collector.
+    on_step(model, data, info): optional per-step hook (video rendering); never changes physics."""
     model, data = _build(obj)
     ids = {n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, n) for n in ("obj", "fl", "fr", "table")}
     finger_ids = {ids["fl"], ids["fr"]}
@@ -200,6 +201,9 @@ def run_grasp(obj: PhysObject, grip_cmd: float, callback=None,
                 res.slipped = True
                 if callback:
                     apply(callback("slip", {"slip_m": slip, "grip_N": grip}), "slip")
+        if on_step is not None:
+            on_step(model, data, {"k": k, "grip": grip, "crushed": res.crushed, "lifted": lifted,
+                                  "slipped": res.slipped, "load": load})
 
     final_oz = data.body("obj").xpos[2]
     res.dropped = (not lifted) or res.max_slip_m > DROP_M or final_oz < oz0 + 0.5 * LIFT_HEIGHT

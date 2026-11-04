@@ -82,20 +82,41 @@ def suites(seed):
     }
 
 
-def run(seeds):
-    rows = []
-    for seed in range(seeds):
-        t0 = time.time()
-        X, Y, vrows, _ = collect(np.random.default_rng(seed))
-        model = ForwardModel(seed=seed).fit(X, Y)
-        for suite, trials in suites(seed).items():
-            for name in SYSTEMS:
-                system = new_system(name, model, vrows)            # fresh memory per suite
-                rng = np.random.default_rng(seed * 7 + zlib.crc32(suite.encode()) % 1000)   # identical percept noise for both
-                for i, (obj, k) in enumerate(trials):
-                    rows.append(dict(seed=seed, suite=suite, system=name, trial=i, rep=k, **do_grasp(system, obj, rng)))
-        print(f"seed {seed} done ({time.time() - t0:.0f}s)", flush=True)
+def use_gripper(name):
+    """'box' = sim/env.py parallel jaw; 'magpie' = real MAGPIE 4-bar model (sim/env_magpie.py).
+    Swaps the simulator for both Phase-0 data collection and the test grasps."""
+    global run_grasp
+    if name == "magpie":
+        import sim.run_experiments as RE
+        from sim import env_magpie
+        env_magpie.kinematics()
+        RE.run_grasp = run_grasp = env_magpie.run_grasp
+
+
+def run_seed(seed, gripper="box"):
+    use_gripper(gripper)
+    rows, t0 = [], time.time()
+    X, Y, vrows, _ = collect(np.random.default_rng(seed))
+    model = ForwardModel(seed=seed).fit(X, Y)
+    for suite, trials in suites(seed).items():
+        for name in SYSTEMS:
+            system = new_system(name, model, vrows)            # fresh memory per suite
+            rng = np.random.default_rng(seed * 7 + zlib.crc32(suite.encode()) % 1000)   # identical percept noise for both
+            for i, (obj, k) in enumerate(trials):
+                rows.append(dict(seed=seed, suite=suite, system=name, trial=i, rep=k, **do_grasp(system, obj, rng)))
+    print(f"seed {seed} done ({time.time() - t0:.0f}s)", flush=True)
     return rows
+
+
+def run(seeds, gripper="box", jobs=1):
+    if jobs > 1:
+        from functools import partial
+        from multiprocessing import Pool
+        with Pool(jobs) as pool:
+            parts = pool.map(partial(run_seed, gripper=gripper), range(seeds))
+    else:
+        parts = [run_seed(s, gripper) for s in range(seeds)]
+    return [r for p in parts for r in p]
 
 
 def boot_ci(diff, n=2000, rng=np.random.default_rng(0)):
@@ -164,14 +185,20 @@ def report(rows):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=5)
+    ap.add_argument("--gripper", choices=["box", "magpie"], default="box")
+    ap.add_argument("--jobs", type=int, default=1)
+    ap.add_argument("--out", default=OUT)
     a = ap.parse_args()
-    os.makedirs(OUT, exist_ok=True)
-    rows = run(a.seeds)
-    with open(os.path.join(OUT, "trials.csv"), "w", newline="") as f:
+    out = a.out
+    os.makedirs(out, exist_ok=True)
+    rows = run(a.seeds, a.gripper, a.jobs)
+    for r in rows:
+        r["gripper"] = a.gripper
+    with open(os.path.join(out, "trials.csv"), "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader(); w.writerows(rows)
     rep = report(rows)
-    open(os.path.join(OUT, "report.md"), "w").write(rep)
+    open(os.path.join(out, "report.md"), "w").write(rep)
     print(rep)
 
 

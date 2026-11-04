@@ -117,6 +117,24 @@ What this does and doesn't show, honestly:
 
 v2 and v3 pass all five pre-registered checks against v1.
 
+![v1 vs v2 vs v3 pipeline](docs/assets/fig_versions.png)
+
+### Same harness on the real MAGPIE gripper model
+
+`python -m harness.compare_autograsp --seeds 5 --gripper magpie --jobs 2 --out harness/out_magpie` swaps the simple jaw for the MAGPIE MuJoCo model from HAMS (`CL_Assets/mujoco_assets/magpie_gripper.xml` + STL meshes, copied to `sim/assets/magpie/`): two 4-bar linkages closed by `connect` equalities, 4 pads per finger. Grip is applied as crank torque, τ = grip × J(θ), with J measured from the linkage (`sim/env_magpie.py`), the way the Dynamixel current limit sets force on hardware. Both the Phase-0 training log and the test grasps use MAGPIE. Report: [harness/out_magpie/report.md](harness/out_magpie/report.md).
+
+| Suite | v1 | v2 PSG | v3 PSG + coupling |
+|---|---|---|---|
+| Honest unseen | 99% | 100% | 100% |
+| Deceptive weight | 50% | 97% | 99% |
+| Look-alike leak | 100% | 100% | 100% |
+| Fragile, looks sturdy | 33% (30 crushes) | 84% (7) | **100% (0)** |
+| Same object ×5 | 100% | 100% | 100% |
+
+v2 and v3 again pass all five checks against v1. The result does not depend on the gripper geometry.
+
+**Video:** `harness/out_magpie/psg_v1_v2_v3_magpie.mp4` (MAGPIE) and `harness/out/psg_v1_v2_v3.mp4` (box jaw): v1 / v2 / v3 side by side on real harness trials, replayed exactly (`MUJOCO_GL=osmesa python -m harness.make_video [--magpie]`). **All trials in one spreadsheet:** `harness/out/PSG_harness_results.xlsx`.
+
 **Value-head ablation** (`harness/out_value_head/`): removing the value head (v2a) changes nothing; rewarding low excess force instead of success alone (v2b) makes the force *worse* (median peak on deceptive objects 1.60× vs 1.41×). Learning the margin by trial and error isn't paying off here. The uncertainty-scaled margin plus coupling (v3) does the job, so the next version drops the value head.
 
 ## References

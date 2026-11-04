@@ -49,3 +49,7 @@ All PSG versions have a 0.3 N grip floor (the MAGPIE gripper's ~0.15 N/finger se
 Run: `python -m harness.compare_autograsp --seeds 5` → `harness/out/report.md`, `harness/out/trials.csv`.
 
 The same plan carries to hardware (UR5 + DeliGrasp, `use_psg:=false` vs `true`) and to the H1-2 HAMS sim once its MAGPIE hands expose a load signal. Only the grasp executor changes.
+
+## Gripper models
+
+`--gripper box` (default) uses the simple parallel jaw in `sim/env.py`. `--gripper magpie` uses the MAGPIE MuJoCo model from HAMS (`sim/env_magpie.py`, meshes in `sim/assets/magpie/`): 4-bar fingers, grip applied as crank torque τ = grip × J(θ), fingers pre-shaped to 1 mm outside the object before the timed grasp. Both Phase-0 training data and test grasps then use MAGPIE. Results: `harness/out_magpie/`.
