@@ -133,7 +133,23 @@ v2 and v3 pass all five pre-registered checks against v1.
 
 v2 and v3 again pass all five checks against v1. The result does not depend on the gripper geometry.
 
-**Video:** `harness/out_magpie/psg_v1_v2_v3_magpie.mp4` (MAGPIE) and `harness/out/psg_v1_v2_v3.mp4` (box jaw): v1 / v2 / v3 side by side on real harness trials, replayed exactly (`MUJOCO_GL=osmesa python -m harness.make_video [--magpie]`). **All trials in one spreadsheet:** `harness/out/PSG_harness_results.xlsx`.
+### Ablation: which part of v3 does the work? (MAGPIE, 5 seeds)
+
+`HARNESS_SYSTEMS=v1_deligrasp,a1_v1_plus_coupling,a2_predict_only,a3_predict_couple,a4_predict_memory,v4_no_value_head,v3_psg_couple python -m harness.compare_autograsp --seeds 5 --gripper magpie --jobs 2 --out harness/out_ablation_magpie`
+
+| Version | Coupling | Memory | Deceptive | Fragile (crushes) | Grip ÷ need, deceptive |
+|---|---|---|---|---|---|
+| v1 (looks-based prior) | no | no | 50% | 33% (30) | 5.4× |
+| v1 + coupling | yes | no | 83% | 67% (15) | 2.5× |
+| Learned prediction only | no | no | 83% | 49% (23) | 3.2× |
+| Prediction + coupling | yes | no | 98% | 98% (1) | 1.6× |
+| Prediction + memory | no | yes | 97% | 82% (8) | 1.25× |
+| **v4 = v3 without value head** | yes | yes | **99%** | **100% (0)** | 1.3× |
+| v3 | yes | yes | 99% | 100% (0) | 1.3× |
+
+Coupling stops first-grasp drops and crushes but needs a roughly right prediction (on v1's prior it still crushes 15). Memory brings force down to ~1.3× from grasp 2. Both are needed; the value head adds nothing (v4 = v3), so v4 is the robot version.
+
+**Videos:** `harness/out_magpie/psg_inside_one_grasp.mp4` (v1 vs v3 with live grip / needed-grip traces) and `harness/out_magpie/psg_v1_v2_v3_magpie.mp4` (MAGPIE) and `harness/out/psg_v1_v2_v3.mp4` (box jaw): v1 / v2 / v3 side by side on real harness trials, replayed exactly (`MUJOCO_GL=osmesa python -m harness.make_video [--magpie]`). **All trials in one spreadsheet:** `harness/out/PSG_harness_results.xlsx`.
 
 **Value-head ablation** (`harness/out_value_head/`): removing the value head (v2a) changes nothing; rewarding low excess force instead of success alone (v2b) makes the force *worse* (median peak on deceptive objects 1.60× vs 1.41×). Learning the margin by trial and error isn't paying off here. The uncertainty-scaled margin plus coupling (v3) does the job, so the next version drops the value head.
 

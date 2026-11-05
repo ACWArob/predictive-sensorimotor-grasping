@@ -128,6 +128,10 @@ footer{font:13px "IBM Plex Sans",sans-serif;color:var(--ink2);margin-top:56px;bo
   <video class="fig" src="assets/psg_v1_v2_v3_magpie.mp4" controls muted playsinline preload="metadata"></video>
   <figcaption>MuJoCo with the MAGPIE gripper model. Real harness trials (seed 0) replayed side by side at half speed: v1 drops a dense block and crushes hollow metal and a thin cup; v3 holds all of them.</figcaption>
 </figure>
+<figure>
+  <video class="fig" src="assets/psg_inside_one_grasp.mp4" controls muted playsinline preload="metadata"></video>
+  <figcaption>Inside one grasp. Blue: grip the controller commands. Grey: grip the object needs at that instant. Below grey it slips; above the red line it crushes.</figcaption>
+</figure>
 <p>Five seeds, paired (same objects, order, sensor noise and physics for every version). Success rate, crushes in brackets:</p>
 <div class="tw"><table>
 <thead><tr><th>Suite</th><th>v1</th><th>v2 PSG</th><th>v3 PSG + coupling</th><th>v1</th><th>v2</th><th>v3</th></tr>
@@ -140,6 +144,18 @@ footer{font:13px "IBM Plex Sans",sans-serif;color:var(--ink2);margin-top:56px;bo
 <tr><td>Same object ×5</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td><td class="n">100%</td></tr>
 </tbody></table></div>
 <p class="meta">v2 and v3 pass all five pre-registered checks against v1 on both grippers. Every grasp is in <a href="https://github.com/ACWArob/predictive-sensorimotor-grasping/blob/main/harness/out/PSG_harness_results.xlsx">the spreadsheet</a>. A value-head ablation found it adds nothing, so the next version drops it.</p>
+<h3>Which part does the work?</h3>
+<div class="tw"><table>
+<thead><tr><th>Version (MAGPIE)</th><th>Coupling</th><th>Memory</th><th>Deceptive</th><th>Fragile (crushes)</th><th>Grip ÷ need</th></tr></thead>
+<tbody>
+<tr><td>v1, looks-based prior</td><td>no</td><td>no</td><td class="n">50%</td><td class="n">33% (30)</td><td class="n">5.4×</td></tr>
+<tr><td>v1 + coupling</td><td>yes</td><td>no</td><td class="n">83%</td><td class="n">67% (15)</td><td class="n">2.5×</td></tr>
+<tr><td>Learned prediction only</td><td>no</td><td>no</td><td class="n">83%</td><td class="n">49% (23)</td><td class="n">3.2×</td></tr>
+<tr><td>Prediction + coupling</td><td>yes</td><td>no</td><td class="n">98%</td><td class="n">98% (1)</td><td class="n">1.6×</td></tr>
+<tr><td>Prediction + memory</td><td>no</td><td>yes</td><td class="n">97%</td><td class="n">82% (8)</td><td class="n">1.25×</td></tr>
+<tr class="ours"><td><b>v4 = v3 without value head</b></td><td>yes</td><td>yes</td><td class="n"><b>99%</b></td><td class="n"><b>100% (0)</b></td><td class="n">1.3×</td></tr>
+</tbody></table></div>
+<p>Coupling stops first-grasp failures but needs a roughly right prediction; memory brings force down from grasp 2. Neither is enough alone.</p>
 
 <h2>On the robot</h2>
 <p>PSG plugs into the MAGPIE ROS 2 stack behind one flag in <code>deligrasp_node</code>. With it on, DeliGrasp starts at the predicted force, the retreat becomes a measured lift using the wrist force/torque sensor, and every grasp is logged as training data.</p>

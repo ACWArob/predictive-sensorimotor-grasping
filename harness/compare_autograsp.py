@@ -24,7 +24,14 @@ from sim.run_experiments import collect, f_need                          # noqa:
 
 OUT = os.path.join(ROOT, "harness", "out")
 SYSTEMS = {"v1_deligrasp": None, "v2_psg": "full", "v3_psg_couple": "full",
-           "v2a_no_value_head": "predictor+update", "v2b_excess_reward": "full"}
+           "v2a_no_value_head": "predictor+update", "v2b_excess_reward": "full",
+           # ablation ladder: which part of v3 does the work?
+           "a1_v1_plus_coupling": "predictor",      # DeliGrasp prior + coupling; no learned model, no memory
+           "a2_predict_only": "predictor",          # learned forward model; no coupling, no memory
+           "a3_predict_couple": "predictor",        # forward model + coupling; no memory
+           "a4_predict_memory": "predictor+update", # forward model + one-shot memory; no coupling (= v2a)
+           "v4_no_value_head": "predictor+update"}  # v3 without the value head (forward model + memory + coupling)
+COUPLED = {"v3_psg_couple", "a1_v1_plus_coupling", "a3_predict_couple", "v4_no_value_head"}
 import os as _os
 if _os.environ.get("HARNESS_SYSTEMS"):
     SYSTEMS = {k: SYSTEMS[k] for k in _os.environ["HARNESS_SYSTEMS"].split(",")}
@@ -37,12 +44,32 @@ def fragile_set(rng):
             make("fragile_shell", "metal", (0.025, 0.025, 0.04), rng, density=300, crush=5.0)]
 
 
+class PriorModel:
+    """DeliGrasp's semantic prior dressed as a forward model, so v1 can get grip-load coupling
+    without any learned prediction: load = m_prior * g * 1.33, ratio = 1 / (2 mu_prior), and an
+    std chosen so the default margin equals DeliGrasp's 1.5x."""
+    SD = np.log(1.5 / 1.25) / np.sqrt(2)
+
+    def __init__(self):
+        self.obj = None
+
+    def predict(self, x):
+        from sim.baselines import PRIOR
+        from sim.env import G
+        dens, mu = PRIOR[self.obj.material]
+        m = dens * 8 * np.prod(self.obj.half_size)
+        mean = np.array([[np.log(m * G * 1.33), np.log(1 / (2 * mu))]])
+        return mean, np.full((1, 2), self.SD)
+
+
 def new_system(name, model, vrows):
     if name == "v1_deligrasp":
         return DeliGraspLike()
     from psg.value_head import ValueHead
     vh = ValueHead(excess_cost=0.3) if name == "v2b_excess_reward" else None
-    agent = PredictiveGraspAgent(model, mode=SYSTEMS[name], couple=name.endswith("couple"), value_head=vh)
+    if name == "a1_v1_plus_coupling":
+        return PredictiveGraspAgent(PriorModel(), mode="predictor", couple=True)
+    agent = PredictiveGraspAgent(model, mode=SYSTEMS[name], couple=name in COUPLED, value_head=vh)
     rows = [(x, f / np.exp(model.predict(x)[0][0].sum()), ok) for x, f, ok in vrows]
     agent.pretrain_value_head(rows)
     return agent
@@ -51,6 +78,8 @@ def new_system(name, model, vrows):
 def do_grasp(system, obj, rng):
     pc = percept(obj, rng)
     if isinstance(system, PredictiveGraspAgent):
+        if isinstance(system.model, PriorModel):
+            system.model.obj = obj
         pred, cmp = system.plan(pc)
         f0 = pred.grip_cmd
         res = run_grasp(obj, f0, cmp)
