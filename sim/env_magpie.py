@@ -330,8 +330,9 @@ def run_transport(model, data, obj, obj_id, left, right, table_id, ql, qr, grip0
     hand, objb = data.body("hand"), data.body("obj")
     rel0 = objb.xpos - hand.xpos
     rel0 = rel0.copy()
-    grip_act, buf = grip0, []
+    grip_act, buf, abuf = grip0, [], []
     peak_grip, peak_need, crushed, shift_max = grip0, 0.0, False, 0.0
+    sum_grip = sum_need = 0.0
     n = int(T / dt)
     f6 = np.zeros(6)
     jx = model.jnt_dofadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "tx")]
@@ -352,9 +353,13 @@ def run_transport(model, data, obj, obj_id, left, right, table_id, ql, qr, grip0
             w = c.frame.reshape(3, 3).T @ f6[:3]
             lv += -w if c.geom1 == obj_id else w
         buf.append(lv)
+        abuf.append((data.qacc[jx], data.qacc[jz]))
         felt = buf[max(0, len(buf) - 1 - int(delay / dt))]
+        a_meas = np.array(abuf[max(0, len(abuf) - 1 - int(delay / dt))])
+        a_prev = np.array(abuf[max(0, len(abuf) - 1 - int(delay / dt) - 20)])
         _, _, axp, azp = traj(t + lead)
-        info = {"t": t, "load_vec": felt, "grip": grip_act, "a_plan": np.array([axp, 0.0, azp])}
+        info = {"t": t, "load_vec": felt, "grip": grip_act, "a_plan": np.array([axp, 0.0, azp]),
+                "a_meas": a_meas, "a_meas_prev": a_prev, "lead": lead, "delay": delay, "traj": traj}
         cmd = float(np.clip(ctrl(t, info), 0.0, F_MAX_ACTUATOR))
         grip_act += (cmd - grip_act) * dt / tau
         data.ctrl[1] = grip_act * _jac(data.qpos[ql])
@@ -364,6 +369,8 @@ def run_transport(model, data, obj, obj_id, left, right, table_id, ql, qr, grip0
         # grip the object needs right now, from the hand's actual acceleration: m |g + a| / 2mu
         need = obj.mass * np.hypot(data.qacc[jx], G + data.qacc[jz]) / (2 * obj.mu)
         peak_need = max(peak_need, need)
+        sum_grip += grip_act
+        sum_need += need
         peak_grip = max(peak_grip, grip_act)
         crushed = crushed or grip_act > obj.f_crush
         shift_max = max(shift_max, float(np.linalg.norm((objb.xpos - hand.xpos) - rel0)))
@@ -375,4 +382,4 @@ def run_transport(model, data, obj, obj_id, left, right, table_id, ql, qr, grip0
     shift_end = float(np.linalg.norm((objb.xpos - hand.xpos) - rel0))
     held = shift_max <= 0.03
     return dict(held=held, crushed=crushed, shift_mm=1000 * shift_end, shift_max_mm=1000 * shift_max,
-                peak_grip=peak_grip, peak_need=float(peak_need))
+                peak_grip=peak_grip, peak_need=float(peak_need), mean_grip_ratio=float(sum_grip / max(sum_need, 1e-9)))
