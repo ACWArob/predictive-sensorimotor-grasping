@@ -149,6 +149,21 @@ v2 and v3 again pass all five checks against v1. The result does not depend on t
 
 Coupling stops first-grasp drops and crushes but needs a roughly right prediction (on v1's prior it still crushes 15). Memory brings force down to ~1.3× from grasp 2. Both are needed; the value head adds nothing (v4 = v3), so v4 is the robot version.
 
+### After the grasp: carry-and-place (the policy phase)
+
+`python -m harness.transport_test --seeds 3 --jobs 2` → `harness/out_transport/`. Grasp, then a policy-like move (up 8 cm + over 30 cm, then down to place); gripper lags 50 ms, load felt 20 ms late. Task success = held, not crushed, object < 5 mm from its start pose in the hand (so the next policy step starts where it expects). Fast move, 3 seeds:
+
+| System | Honest | Deceptive | Fragile |
+|---|---|---|---|
+| v1 today, grip fixed | 86% | 33% | 33% |
+| v4 PSG grasp, grip fixed | 43% | 57% | 78% |
+| v4 + feedback only | 31% | 32% | 41% |
+| v5 feedforward, no memory | 57% | 57% | 67% |
+| v5 feedforward + memory | 92% | 90% | 96% |
+| **v5 + memory warm-started on Phase-0 objects** | **98%** | **98%** | **100%** |
+
+Minimum-force grasping (v4) hurts the policy that follows: just enough grip to lift is not enough to move. Feedback is too slow; grip has to be set from the planned move (efference copy) with a margin learned per object and per skill. Cost: peak grip 2.3–2.5× need during the move. Video: `harness/out_transport/psg_after_the_grasp.mp4`.
+
 **Videos:** `harness/out_magpie/psg_inside_one_grasp.mp4` (v1 vs v3 with live grip / needed-grip traces) and `harness/out_magpie/psg_v1_v2_v3_magpie.mp4` (MAGPIE) and `harness/out/psg_v1_v2_v3.mp4` (box jaw): v1 / v2 / v3 side by side on real harness trials, replayed exactly (`MUJOCO_GL=osmesa python -m harness.make_video [--magpie]`). **All trials in one spreadsheet:** `harness/out/PSG_harness_results.xlsx`.
 
 **Value-head ablation** (`harness/out_value_head/`): removing the value head (v2a) changes nothing; rewarding low excess force instead of success alone (v2b) makes the force *worse* (median peak on deceptive objects 1.60× vs 1.41×). Learning the margin by trial and error isn't paying off here. The uncertainty-scaled margin plus coupling (v3) does the job, so the next version drops the value head.

@@ -17,7 +17,7 @@ import os
 import mujoco
 import numpy as np
 
-from sim.env import DROP_M, F_MAX_ACTUATOR, LIFT_HEIGHT, SLIP_EVENT_M, GraspResult, PhysObject  # noqa: F401
+from sim.env import G, DROP_M, F_MAX_ACTUATOR, LIFT_HEIGHT, SLIP_EVENT_M, GraspResult, PhysObject  # noqa: F401
 
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "magpie")
 PAD_Z = (0.0113, 0.0313, 0.0513, 0.0713)        # pad centres along the finger (HAMS defaults)
@@ -33,7 +33,7 @@ def _gripper_body():
     return s[s.index("<body"):]
 
 
-def _xml(hand_z, obj: PhysObject | None, mu_pad=0.6):
+def _xml(hand_z, obj: PhysObject | None, mu_pad=0.6, transport=False):
     pads = "".join(
         f'<default class="pad_box{i + 1}"><geom mass="0" type="box" pos="0.003 {sgn * PAD_Y} {z}" '
         f'size="0.008 {PAD_T} 0.01" friction="{mu_pad} 0.005 0.0001" priority="2" contype="1" conaffinity="1" '
@@ -64,6 +64,7 @@ def _xml(hand_z, obj: PhysObject | None, mu_pad=0.6):
     <geom name="table" type="plane" size="1 1 .05" friction="0.6 0.005 0.0001" rgba="0.82 0.82 0.80 1"/>
     <body name="hand" pos="0 0 {hand_z}">
       <joint name="lift" type="slide" axis="0 0 1" damping="50"/>
+      {'<joint name="tx" type="slide" axis="1 0 0" damping="50"/>' if transport else ''}
       <geom type="box" size=".02 .02 .01" pos="0 0 0.01" mass="0.5" contype="0" conaffinity="0" rgba="0.2 0.2 0.22 1"/>
       <body name="flip" euler="3.14159265 0 0" childclass="magpie">{_gripper_body()}</body>
     </body>
@@ -77,6 +78,7 @@ def _xml(hand_z, obj: PhysObject | None, mu_pad=0.6):
     <position name="lift" joint="lift" kp="4000" ctrlrange="-1 1"/>
     <motor name="ml" joint="left_hinge_1" ctrlrange="-5 5"/>
     <motor name="mr" joint="right_hinge_1" ctrlrange="-5 5"/>
+    {'<position name="tx" joint="tx" kp="4000" ctrlrange="-2 2"/>' if transport else ''}
   </actuator>
 </mujoco>"""
 
@@ -137,14 +139,14 @@ def _jac(theta):
     return float(np.interp(theta, th, J))
 
 
-def build(obj: PhysObject):
+def build(obj: PhysObject, transport=False):
     th, hg, tz = kinematics()
     sy = obj.half_size[1]
     a_pre = _angle_for_half_gap(sy + 0.001)
     a_obj = _angle_for_half_gap(sy)
     tip = float(np.interp(a_obj, th, tz))                  # negative: fingertip pad below hand
     hand_z = max(0.004 + 0.010 - tip, obj.half_size[2] * 2 + 0.02)
-    model = mujoco.MjModel.from_xml_string(_xml(hand_z, obj, mu_pad=obj.mu))
+    model = mujoco.MjModel.from_xml_string(_xml(hand_z, obj, mu_pad=obj.mu, transport=transport))
     return model, mujoco.MjData(model), a_pre
 
 
@@ -171,8 +173,10 @@ def _forces(model, data, obj_id, left, right, table_id):
 
 
 def run_grasp(obj: PhysObject, grip_cmd: float, callback=None,
-              close_s=0.3, lift_s=1.0, hold_s=1.0, probe_slip=False, on_step=None, preshape_s=0.4) -> GraspResult:
-    model, data, a_pre = build(obj)
+              close_s=0.3, lift_s=1.0, hold_s=1.0, probe_slip=False, on_step=None, preshape_s=0.4,
+              transport=None) -> GraspResult:
+    """transport: optional dict(traj, T, ctrl, tau=0.05, delay=0.02) run after the hold, see run_transport."""
+    model, data, a_pre = build(obj, transport=transport is not None)
     left, right, (ql, qr), (dl, dr) = _ids(model)
     obj_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "obj")
     table_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "table")
@@ -250,7 +254,12 @@ def run_grasp(obj: PhysObject, grip_cmd: float, callback=None,
             on_step(model, data, {"k": k, "grip": grip, "crushed": res.crushed, "lifted": lifted,
                                   "slipped": res.slipped, "load": load})
 
-    final_oz = data.body("obj").xpos[2]
+    if transport is not None and lifted:
+        res.transport = run_transport(model, data, obj, obj_id, left, right, table_id, ql, qr, grip,
+                                      on_step=on_step, **transport)
+    elif transport is not None:
+        res.transport = None
+    final_oz = data.body("obj").xpos[2] if transport is None else oz0 + LIFT_HEIGHT
     res.dropped = (not lifted) or res.max_slip_m > DROP_M or final_oz < oz0 + 0.5 * LIFT_HEIGHT
     res.success = not res.crushed and not res.dropped
     if hold_loads:
@@ -279,3 +288,91 @@ if __name__ == "__main__":
         r = run_grasp(o, f)
         print(f, r.success, r.crushed, r.dropped, round(r.max_slip_m, 4),
               None if r.load_liftoff is None else round(r.load_liftoff, 2), None if r.hold_load is None else round(r.hold_load, 2))
+
+
+def min_jerk(d, T):
+    """Position, velocity, acceleration of a minimum-jerk move of length d in time T."""
+    def f(t):
+        u = np.clip(t / T, 0.0, 1.0)
+        p = d * (10 * u**3 - 15 * u**4 + 6 * u**5)
+        v = d / T * (30 * u**2 - 60 * u**3 + 30 * u**4) if 0 < t < T else 0.0
+        a = d / T**2 * (60 * u - 180 * u**2 + 120 * u**3) if 0 < t < T else 0.0
+        return p, v, a
+    return f
+
+
+def transport_traj(T, dx=0.30, dz_up=0.08):
+    """Carry-and-place, the kind of motion a policy does after the grasp: up 8 cm and over 30 cm
+    together in T, then down 8 cm to place in 0.6 T, then a 0.3 s settle. Returns (x, z, ax, az)(t)
+    and total duration. Peak accelerations scale with 1/T^2."""
+    mx, mz, md = min_jerk(dx, T), min_jerk(dz_up, T), min_jerk(-dz_up, 0.6 * T)
+
+    def traj(t):
+        x, _, ax = mx(t)
+        z, _, az = mz(t)
+        if t > T:
+            z2, _, az2 = md(t - T)
+            z, az = z + z2, az2
+        return x, z, ax, az
+    return traj, 1.6 * T + 0.3
+
+
+def run_transport(model, data, obj, obj_id, left, right, table_id, ql, qr, grip0, traj, T, ctrl,
+                  tau=0.05, delay=0.02, lead=None, on_step=None):
+    """Move the grasped object along traj while ctrl(t, info) sets the grip command.
+    The gripper follows its command with a first-order lag (tau) and the controller sees the felt
+    load `delay` s late, as on the real robot. info holds the delayed felt load vector, the current
+    grip, and the PLANNED hand acceleration `lead` s ahead (the efference copy of the policy's plan).
+    Returns metrics: held, crushed, in-hand shift (m), peak grip and peak needed grip."""
+    dt = model.opt.timestep
+    lead = tau + delay if lead is None else lead
+    z0, x0 = data.ctrl[0], 0.0
+    hand, objb = data.body("hand"), data.body("obj")
+    rel0 = objb.xpos - hand.xpos
+    rel0 = rel0.copy()
+    grip_act, buf = grip0, []
+    peak_grip, peak_need, crushed, shift_max = grip0, 0.0, False, 0.0
+    n = int(T / dt)
+    f6 = np.zeros(6)
+    jx = model.jnt_dofadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "tx")]
+    jz = model.jnt_dofadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "lift")]
+    for k in range(n):
+        t = k * dt
+        x, z, _, _ = traj(t)
+        data.ctrl[0] = z0 + z
+        data.ctrl[3] = x0 + x
+        # felt load vector on the object from the fingers (world frame)
+        lv = np.zeros(3)
+        for i in range(data.ncon):
+            c = data.contact[i]
+            pair = {c.geom1, c.geom2}
+            if obj_id not in pair or not (pair & (left | right)):
+                continue
+            mujoco.mj_contactForce(model, data, i, f6)
+            w = c.frame.reshape(3, 3).T @ f6[:3]
+            lv += -w if c.geom1 == obj_id else w
+        buf.append(lv)
+        felt = buf[max(0, len(buf) - 1 - int(delay / dt))]
+        _, _, axp, azp = traj(t + lead)
+        info = {"t": t, "load_vec": felt, "grip": grip_act, "a_plan": np.array([axp, 0.0, azp])}
+        cmd = float(np.clip(ctrl(t, info), 0.0, F_MAX_ACTUATOR))
+        grip_act += (cmd - grip_act) * dt / tau
+        data.ctrl[1] = grip_act * _jac(data.qpos[ql])
+        data.ctrl[2] = -grip_act * _jac(-data.qpos[qr])
+        mujoco.mj_step(model, data)
+        tang = np.hypot(lv[0], lv[2])                    # felt load the fingers hold by friction
+        # grip the object needs right now, from the hand's actual acceleration: m |g + a| / 2mu
+        need = obj.mass * np.hypot(data.qacc[jx], G + data.qacc[jz]) / (2 * obj.mu)
+        peak_need = max(peak_need, need)
+        peak_grip = max(peak_grip, grip_act)
+        crushed = crushed or grip_act > obj.f_crush
+        shift_max = max(shift_max, float(np.linalg.norm((objb.xpos - hand.xpos) - rel0)))
+        if on_step is not None:
+            on_step(model, data, {"k": 10_000 + k, "grip": grip_act, "crushed": crushed, "lifted": True,
+                                  "slipped": shift_max > SLIP_EVENT_M, "load": tang, "x": x, "need": need})
+        if shift_max > 0.03:                               # fell out of the hand
+            break
+    shift_end = float(np.linalg.norm((objb.xpos - hand.xpos) - rel0))
+    held = shift_max <= 0.03
+    return dict(held=held, crushed=crushed, shift_mm=1000 * shift_end, shift_max_mm=1000 * shift_max,
+                peak_grip=peak_grip, peak_need=float(peak_need))
