@@ -152,7 +152,8 @@ def run_trial(name, system, obj, rng, T, dx=0.30):
     shift = tr.get("shift_mm", np.nan)
     return dict(obj=obj.name, lifted=int(res.success), held=int(held), crushed=int(crushed),
                 shift_mm=round(float(shift), 2) if held else np.nan,
-                task_ok=int(held and not crushed and shift < 5.0),
+                rot_deg=round(float(tr.get("rot_deg", np.nan)), 1) if held else np.nan,
+                task_ok=int(held and not crushed and shift < 5.0 and tr.get("rot_deg", 0.0) < 10.0),
                 grip_lift=round(res.grip_max, 3), peak_grip=round(tr.get("peak_grip", np.nan), 3),
                 peak_need=round(tr.get("peak_need", np.nan), 3),
                 move_excess=round(tr.get("peak_grip", np.nan) / max(tr.get("peak_need", np.nan), 1e-6), 3) if tr else np.nan,
@@ -231,10 +232,14 @@ def main():
     else:
         parts = [run_seed(s) for s in range(a.seeds)]
     rows = [r for p in parts for r in p]
+    os.makedirs(OUT, exist_ok=True)
     with open(os.path.join(OUT, "trials.csv"), "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader(); w.writerows(rows)
-    rep = report(rows)
+    try:
+        rep = report(rows)
+    except Exception as e:                                  # mixed-move runs have no 'fast' column
+        rep = f"(summary skipped: {e})\n"
     open(os.path.join(OUT, "report.md"), "w").write(rep)
     print(rep)
 

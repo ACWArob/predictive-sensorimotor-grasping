@@ -39,6 +39,11 @@ if _os.environ.get("HARNESS_SYSTEMS"):
 
 def fragile_set(rng):
     """Look sturdy, crush easily."""
+    from sim.objects import USE_SHAPES
+    if USE_SHAPES:
+        return [make("fragile_thin_cup", "ceramic", (0.03, 0.03, 0.045), rng, density=400, crush=4.0, shape="cylinder"),
+                make("fragile_egg", "ceramic", (0.022, 0.021, 0.03), rng, density=1100, crush=3.0, shape="ellipsoid"),
+                make("fragile_ornament", "metal", (0.028, 0.028, 0.028), rng, density=250, crush=4.0, shape="sphere")]
     return [make("fragile_thin_cup", "ceramic", (0.03, 0.03, 0.045), rng, density=400, crush=4.0),
             make("fragile_foam_block", "wood", (0.03, 0.03, 0.03), rng, density=120, crush=3.0),
             make("fragile_shell", "metal", (0.025, 0.025, 0.04), rng, density=300, crush=5.0)]
@@ -57,7 +62,7 @@ class PriorModel:
         from sim.baselines import PRIOR
         from sim.env import G
         dens, mu = PRIOR[self.obj.material]
-        m = dens * 8 * np.prod(self.obj.half_size)
+        m = dens * self.obj.volume()
         mean = np.array([[np.log(m * G * 1.33), np.log(1 / (2 * mu))]])
         return mean, np.full((1, 2), self.SD)
 
@@ -101,11 +106,12 @@ def suites(seed):
     dec = [o for o, _ in deceptive_set(r(2))]
     d = {o.name: o for o in dec}
     frag = fragile_set(r(3))
+    LA = ("can_empty", "can_full_slosh") if "can_empty" in d else ("bottle_empty", "bottle_full")
     rep = heldout_set(r(4), n=10)
     return {
         "S1_honest_unseen": [(o, 0) for o in honest],
         "S2_deceptive": [(o, k) for k in range(5) for o in dec],
-        "S3_lookalike_leak": [(d[n], i) for i, n in enumerate(["bottle_empty"] * 3 + ["bottle_full"] * 3 + ["bottle_empty"] * 3)],
+        "S3_lookalike_leak": [(d[n], i) for i, n in enumerate([LA[0]] * 3 + [LA[1]] * 3 + [LA[0]] * 3)],
         "S4_fragile": [(o, k) for k in range(3) for o in frag],
         "S5_repeat_honest": [(o, k) for k in range(5) for o in rep],
     }

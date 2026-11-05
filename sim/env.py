@@ -61,6 +61,22 @@ _XML = """
 """
 
 
+def shape_volume(shape, half_size) -> float:
+    sx, sy, sz = half_size
+    r = min(sx, sy)
+    if shape == "cylinder":
+        return np.pi * r * r * 2 * sz
+    if shape == "mug":
+        return np.pi * r * r * 2 * sz * 0.45          # thick-walled cup + handle, mostly hollow
+    if shape == "sphere":
+        return 4 / 3 * np.pi * r ** 3
+    if shape == "capsule":
+        return np.pi * r * r * (2 * sz - 2 * r) + 4 / 3 * np.pi * r ** 3
+    if shape == "ellipsoid":
+        return 4 / 3 * np.pi * sx * sy * sz
+    return 8 * sx * sy * sz
+
+
 @dataclass
 class PhysObject:
     """Ground truth the robot never sees directly."""
@@ -70,6 +86,11 @@ class PhysObject:
     mu: float                   # friction coefficient
     f_crush: float              # N; grip above this breaks/dents it
     material: str = "plastic"   # what it LOOKS like (may lie)
+    shape: str = "box"          # box | cylinder | sphere | capsule | ellipsoid | mug (half_size = bounding half-extents)
+    slosh: float = 0.0          # fraction of the mass that is liquid and moves inside (0 = solid)
+
+    def volume(self) -> float:
+        return shape_volume(self.shape, self.half_size)
 
     @property
     def f_required(self) -> float:

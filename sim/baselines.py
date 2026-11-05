@@ -37,7 +37,7 @@ class DeliGraspLike:
 
     def plan(self, obj, percept):
         dens, mu = PRIOR[obj.material]
-        m = dens * 8 * np.prod(obj.half_size)
+        m = dens * obj.volume()
         return m * G * self.acc / (2 * mu) * self.margin, SlipReflex()
 
     def observe(self, *a, **k):

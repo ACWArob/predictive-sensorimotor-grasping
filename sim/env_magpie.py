@@ -33,22 +33,54 @@ def _gripper_body():
     return s[s.index("<body"):]
 
 
+def _obj_xml(obj: PhysObject) -> str:
+    """The object body for any shape, plus an optional sloshing liquid mass inside it."""
+    sx, sy, sz = obj.half_size
+    shape = getattr(obj, "shape", "box")
+    slosh = getattr(obj, "slosh", 0.0)
+    m_liq = obj.mass * slosh
+    m_body = obj.mass - m_liq
+    surf = f'friction="{obj.mu} 0.005 0.0001" solref="0.004 1" solimp="0.95 0.99 0.001"'
+    r = min(sx, sy)
+    if shape == "cylinder":
+        geoms = f'<geom name="obj" type="cylinder" size="{r} {sz}" mass="{m_body}" {surf}/>'
+    elif shape == "sphere":
+        geoms = f'<geom name="obj" type="sphere" size="{r}" mass="{m_body}" {surf}/>'
+    elif shape == "capsule":
+        geoms = f'<geom name="obj" type="capsule" size="{r} {max(sz - r, 1e-3)}" mass="{m_body}" {surf}/>'
+    elif shape == "ellipsoid":
+        geoms = f'<geom name="obj" type="ellipsoid" size="{sx} {sy} {sz}" mass="{m_body}" {surf}/>'
+    elif shape == "mug":                       # cup + handle on +x: the handle moves the centre of mass off the grasp axis
+        geoms = (f'<geom name="obj" type="cylinder" size="{r} {sz}" mass="{0.82 * m_body}" {surf}/>'
+                 f'<geom type="box" pos="{r + 0.012} 0 0" size="0.012 0.004 {0.6 * sz}" mass="{0.18 * m_body}" '
+                 f'contype="0" conaffinity="0" rgba="0.5 0.5 0.55 1"/>')
+    else:
+        geoms = f'<geom name="obj" type="box" size="{sx} {sy} {sz}" mass="{m_body}" {surf}/>'
+    liquid = ""
+    if m_liq > 0:                              # liquid as a mass on a spring along x and z (slosh at ~2.5 Hz)
+        k = m_liq * (2 * np.pi * 2.5) ** 2
+        c = 2 * 0.15 * np.sqrt(k * m_liq)
+        liquid = (f'<body name="liquid"><joint name="slosh_x" type="slide" axis="1 0 0" stiffness="{k}" damping="{c}" '
+                  f'range="{-0.6 * r} {0.6 * r}"/><joint name="slosh_z" type="slide" axis="0 0 1" stiffness="{k}" '
+                  f'damping="{c}" range="{-0.3 * sz} {0.3 * sz}"/>'
+                  f'<geom type="sphere" size="0.004" mass="{m_liq}" contype="0" conaffinity="0" rgba="0.2 0.5 0.9 0.6"/></body>')
+    return f'<body name="obj" pos="0 0 {sz}"><freejoint/>{geoms}{liquid}</body>'
+
+
 def _xml(hand_z, obj: PhysObject | None, mu_pad=0.6, transport=False):
     pads = "".join(
         f'<default class="pad_box{i + 1}"><geom mass="0" type="box" pos="0.003 {sgn * PAD_Y} {z}" '
-        f'size="0.008 {PAD_T} 0.01" friction="{mu_pad} 0.005 0.0001" priority="2" contype="1" conaffinity="1" '
+        f'size="0.008 {PAD_T} 0.01" friction="{mu_pad} 0.005 0.0001" priority="2" condim="4" contype="1" conaffinity="1" '
         f'solimp="0.95 0.99 0.001" solref="0.004 1" rgba="0.55 0.55 0.58 1"/></default>'
         for i, (sgn, z) in enumerate([(-1, z) for z in PAD_Z] + [(1, z) for z in PAD_Z]))
     meshes = "".join(f'<mesh name="magpie_{n}" file="{f}" scale="0.001 0.001 0.001"/>' for n, f in _MESHES)
-    objx = ""
-    if obj is not None:
-        sx, sy, sz = obj.half_size
-        objx = (f'<body name="obj" pos="0 0 {sz}"><freejoint/><geom name="obj" type="box" size="{sx} {sy} {sz}" '
-                f'mass="{obj.mass}" friction="{obj.mu} 0.005 0.0001" solref="0.004 1" solimp="0.95 0.99 0.001"/></body>')
+    objx = _obj_xml(obj) if obj is not None else ""
     return f"""
 <mujoco model="magpie_lift">
   <compiler angle="radian" meshdir="{ASSETS}" autolimits="true"/>
-  <option timestep="0.001" gravity="0 0 -9.81" cone="elliptic" impratio="10" noslip_iterations="3"/>
+  <option timestep="0.001" gravity="0 0 -9.81" cone="elliptic" impratio="10" noslip_iterations="3">
+    <flag multiccd="enable"/>
+  </option>
   <visual><global offwidth="1280" offheight="1280"/></visual>
   <default>
     <default class="magpie">
@@ -330,6 +362,8 @@ def run_transport(model, data, obj, obj_id, left, right, table_id, ql, qr, grip0
     hand, objb = data.body("hand"), data.body("obj")
     rel0 = objb.xpos - hand.xpos
     rel0 = rel0.copy()
+    q0 = objb.xquat.copy()
+    hq0 = hand.xquat.copy()
     grip_act, buf, abuf = grip0, [], []
     peak_grip, peak_need, crushed, shift_max = grip0, 0.0, False, 0.0
     sum_grip = sum_need = 0.0
@@ -380,6 +414,8 @@ def run_transport(model, data, obj, obj_id, left, right, table_id, ql, qr, grip0
         if shift_max > 0.03:                               # fell out of the hand
             break
     shift_end = float(np.linalg.norm((objb.xpos - hand.xpos) - rel0))
+    # in-hand rotation: object orientation change relative to the hand (hand does not rotate here)
+    rot_deg = float(np.degrees(2 * np.arccos(min(1.0, abs(float(np.dot(q0, objb.xquat)))))))
     held = shift_max <= 0.03
-    return dict(held=held, crushed=crushed, shift_mm=1000 * shift_end, shift_max_mm=1000 * shift_max,
+    return dict(held=held, crushed=crushed, shift_mm=1000 * shift_end, rot_deg=rot_deg, shift_max_mm=1000 * shift_max,
                 peak_grip=peak_grip, peak_need=float(peak_need), mean_grip_ratio=float(sum_grip / max(sum_need, 1e-9)))

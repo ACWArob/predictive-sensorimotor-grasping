@@ -41,7 +41,7 @@ def collect(rng, n_obj=48, grasps_per_obj=4):
     X, Y, vrows, erows = [], [], [], []
     for obj in train_set(rng, n_obj):
         dens, mu = PRIOR[obj.material]
-        prior_f = dens * 8 * np.prod(obj.half_size) * G * LIFT_ACC / (2 * mu)
+        prior_f = dens * obj.volume() * G * LIFT_ACC / (2 * mu)
         ratio = np.nan
         pc = percept(obj, rng)
         probe = run_grasp(obj, min(3 * prior_f + 1, 60), probe_slip=True)
